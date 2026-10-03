@@ -279,6 +279,9 @@ function roomWetLevel() {
   return Number(els.roomWet.value) / 100;
 }
 
+let spatReady = false;
+let sceneRunning = false;
+
 // Ambient uses several FOA Voices at fixed offsets; walker is one VBAP Voice; UI is one Voice.
 /** @type {Voice[]} */
 let ambiVoices = [];
@@ -2100,6 +2103,270 @@ function syncWallMeshFromOccluder(group, o) {
     handles[key].position.set(lx, 1.35, lz);
   }
 }
+
+function roundScene(n, digits = 3) {
+  const p = 10 ** digits;
+  return Math.round(n * p) / p;
+}
+
+function serializeScene(name = "scene") {
+  const walls = occluders.map((o) => ({
+    x0: roundScene(o.x0),
+    z0: roundScene(o.z0),
+    x1: roundScene(o.x1),
+    z1: roundScene(o.z1),
+  }));
+  const birdPositions = birds.map((b) => ({
+    x: roundScene(b.x),
+    z: roundScene(b.z),
+    y: roundScene(b.y ?? 1.2),
+  }));
+  return {
+    version: 1,
+    name,
+    speakerLayout: els.layout?.value || "51",
+    listener: { x: roundScene(listener.x), z: roundScene(listener.z) },
+    floorHeight: Number(els.floorHeight?.value ?? 28),
+    floorOcc: !!els.floorOcc?.checked,
+    walkUpOn: !!els.walkUpOn?.checked,
+    walkUpVol: Number(els.walkUpVol?.value ?? 50),
+    walkUp: { x: roundScene(walkUp.x), z: roundScene(walkUp.z) },
+    waterfall: {
+      x: roundScene(waterfallMesh.position.x),
+      z: roundScene(waterfallMesh.position.z),
+      on: !!els.fallOn?.checked,
+      vol: Number(els.fallVol?.value ?? 45),
+      spatial: els.fallSpatial?.value || "foa",
+      sound: els.fallSound?.value || "waterfall",
+    },
+    walls,
+    birds: birdPositions,
+    room: {
+      size: Number(els.roomSize?.value ?? 80),
+      height: Number(els.roomHeight?.value ?? 30),
+      abs: Number(els.roomAbs?.value ?? 35),
+      wet: Number(els.roomWet?.value ?? 25),
+      on: !!els.roomOn?.checked,
+    },
+  };
+}
+
+function sceneToJson(name) {
+  return JSON.stringify(serializeScene(name), null, 2);
+}
+
+function refreshSceneJsonField() {
+  if (els.sceneJson) els.sceneJson.value = sceneToJson("current");
+}
+
+function refreshWallList() {
+  if (els.wallCount) els.wallCount.textContent = `Walls: ${occluders.length}`;
+  if (!els.wallList) return;
+  els.wallList.innerHTML = "";
+  occluders.forEach((o, i) => {
+    const li = document.createElement("li");
+    if (i === selectedWallIndex) li.classList.add("selected");
+    const cx = roundScene((o.x0 + o.x1) / 2, 2);
+    const cz = roundScene((o.z0 + o.z1) / 2, 2);
+    const w = roundScene(o.x1 - o.x0, 2);
+    const d = roundScene(o.z1 - o.z0, 2);
+    const label = document.createElement("span");
+    label.textContent = `#${i + 1}  (${cx}, ${cz})  ${w}×${d} m`;
+    const del = document.createElement("button");
+    del.type = "button";
+    del.textContent = "Del";
+    del.title = "Remove wall";
+    del.addEventListener("click", (e) => {
+      e.stopPropagation();
+      removeWallAt(i);
+    });
+    li.addEventListener("click", () => {
+      selectedWallIndex = i;
+      highlightSelectedWall();
+      refreshWallList();
+    });
+    li.append(label, del);
+    els.wallList.appendChild(li);
+  });
+}
+
+function highlightSelectedWall() {
+  for (let i = 0; i < wallGroups.length; i++) {
+    const g = wallGroups[i];
+    const body = g?.userData?.body;
+    if (!body?.material) continue;
+    const selected = i === selectedWallIndex;
+    body.material.color.setHex(selected ? 0x3b82f6 : 0x64748b);
+    body.material.opacity = selected ? 0.72 : 0.55;
+    body.material.emissive?.setHex?.(selected ? 0x1d4ed8 : 0x000000);
+    if (body.material.emissiveIntensity != null) {
+      body.material.emissiveIntensity = selected ? 0.35 : 0;
+    }
+  }
+}
+
+function addWall(at = null) {
+  const cx = at?.x ?? listener.x + 1.6;
+  const cz = at?.z ?? listener.z - 1.2;
+  const hw = 0.7;
+  const hd = 0.35;
+  occluders.push({
+    x0: cx - hw,
+    z0: cz - hd,
+    x1: cx + hw,
+    z1: cz + hd,
+  });
+  selectedWallIndex = occluders.length - 1;
+  rebuildWallMeshes();
+  refreshAcoustics();
+  refreshSceneJsonField();
+  setStatus(`Wall ${occluders.length} added`);
+}
+
+function removeWallAt(index) {
+  if (index < 0 || index >= occluders.length) return;
+  occluders.splice(index, 1);
+  if (selectedWallIndex === index) selectedWallIndex = -1;
+  else if (selectedWallIndex > index) selectedWallIndex -= 1;
+  rebuildWallMeshes();
+  refreshAcoustics();
+  refreshSceneJsonField();
+  setStatus(occluders.length ? `Wall removed (${occluders.length} left)` : "All walls removed");
+}
+
+function removeSelectedOrLastWall() {
+  if (selectedWallIndex >= 0) removeWallAt(selectedWallIndex);
+  else if (occluders.length) removeWallAt(occluders.length - 1);
+}
+
+function applyRoomFromScene(room) {
+  if (!room) return;
+  if (room.size != null && els.roomSize) els.roomSize.value = String(room.size);
+  if (room.height != null && els.roomHeight) els.roomHeight.value = String(room.height);
+  if (room.abs != null && els.roomAbs) els.roomAbs.value = String(room.abs);
+  if (room.wet != null && els.roomWet) els.roomWet.value = String(room.wet);
+  if (room.on != null && els.roomOn) els.roomOn.checked = !!room.on;
+  updateLabels();
+  syncSpatFromUI();
+  if (spatReady) spat.refreshRoom();
+}
+
+function applyScene(data, { quiet = false } = {}) {
+  if (!data || typeof data !== "object") throw new Error("Invalid scene JSON");
+  if (data.speakerLayout && els.layout && LAYOUTS[data.speakerLayout]) {
+    const prev = els.layout.value;
+    els.layout.value = data.speakerLayout;
+    if (prev !== data.speakerLayout) {
+      els.layout.dispatchEvent(new Event("change"));
+    }
+  }
+  if (data.listener) {
+    setListenerPosition(Number(data.listener.x) || 0, Number(data.listener.z) || 0);
+  }
+  if (data.waterfall && waterfallMesh) {
+    const w = data.waterfall;
+    if (w.x != null || w.z != null) {
+      waterfallMesh.position.set(Number(w.x) || 0, 0, Number(w.z) || 0);
+    }
+    if (w.on != null && els.fallOn) els.fallOn.checked = !!w.on;
+    if (w.vol != null && els.fallVol) els.fallVol.value = String(w.vol);
+    if (w.spatial && els.fallSpatial) {
+      els.fallSpatial.value = w.spatial;
+      if (waterfallVoice) waterfallVoice.setMode(w.spatial);
+    }
+    if (w.sound && els.fallSound) els.fallSound.value = w.sound;
+    updateLabels();
+    syncWaterfallVisual();
+    syncLevels();
+    if (sceneRunning && els.fallOn?.checked) startWaterfall();
+    else if (sceneRunning && !els.fallOn?.checked) stopWaterfall();
+  }
+  if (Array.isArray(data.walls)) {
+    occluders = data.walls.map((w) => ({
+      x0: Number(w.x0),
+      z0: Number(w.z0),
+      x1: Number(w.x1),
+      z1: Number(w.z1),
+    }));
+    selectedWallIndex = occluders.length ? 0 : -1;
+    rebuildWallMeshes();
+  }
+  if (Array.isArray(data.birds) && data.birds.length && birds.length) {
+    const n = Math.min(birds.length, data.birds.length);
+    for (let i = 0; i < n; i++) {
+      birds[i].x = Number(data.birds[i].x) || birds[i].x;
+      birds[i].z = Number(data.birds[i].z) || birds[i].z;
+      if (data.birds[i].y != null) birds[i].y = Number(data.birds[i].y);
+      birds[i].speed = 0;
+      birds[i].dragHold = 0.2;
+      if (birdVoices[i]) birdVoices[i].setPosition(birds[i].x, birds[i].z, { apply: false, y: birds[i].y });
+    }
+    syncBirdMeshes();
+  }
+  if (data.walkUp && Number.isFinite(Number(data.walkUp.x))) {
+    walkUp.x = Number(data.walkUp.x);
+    walkUp.z = Number(data.walkUp.z);
+    setWalkDestination(walkUp, walkUp.x, walkUp.z);
+  }
+  if (data.floorHeight != null && els.floorHeight) {
+    els.floorHeight.value = String(data.floorHeight);
+  }
+  if (data.floorOcc != null && els.floorOcc) els.floorOcc.checked = !!data.floorOcc;
+  if (data.walkUpOn != null && els.walkUpOn) els.walkUpOn.checked = !!data.walkUpOn;
+  if (data.walkUpVol != null && els.walkUpVol) els.walkUpVol.value = String(data.walkUpVol);
+  applyRoomFromScene(data.room);
+  refreshAcoustics();
+  bumpSpatSettle(12);
+  refreshSceneJsonField();
+  if (!quiet) setStatus(`Loaded “${data.name || "scene"}”`);
+}
+
+async function copySceneToClipboard() {
+  const text = sceneToJson("export");
+  refreshSceneJsonField();
+  try {
+    await navigator.clipboard.writeText(text);
+    setStatus("Scene copied");
+  } catch {
+    if (els.sceneJson) {
+      els.sceneJson.focus();
+      els.sceneJson.select();
+      setStatus("Copy from Scene tab (clipboard blocked)");
+    }
+  }
+}
+
+async function pasteSceneFromClipboard() {
+  try {
+    const text = await navigator.clipboard.readText();
+    applyScene(JSON.parse(text));
+  } catch (err) {
+    if (els.sceneJson?.value?.trim()) {
+      try {
+        applyScene(JSON.parse(els.sceneJson.value));
+        return;
+      } catch {
+        /* fall through */
+      }
+    }
+    setStatus("Paste failed — use Scene tab JSON");
+    console.warn(err);
+  }
+}
+
+async function loadDefaultLayout() {
+  try {
+    const res = await fetch(`./layouts/default.json?t=${Date.now()}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    applyScene(data);
+    setStatus("Default layout loaded");
+  } catch (err) {
+    setStatus("Could not load default.json");
+    console.warn(err);
+  }
+}
+
 
 function rebuildWallMeshes() {
   for (const g of wallGroups) {
