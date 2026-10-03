@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Surround Mixer</title>
+  <link rel="stylesheet" href="style.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three.module.min.js",
+        "three/addons/controls/OrbitControls.js": "./vendor/OrbitControls.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div class="ps-app">
+    <!-- Menu / options bar -->
+    <header class="ps-menubar">
+      <div class="ps-brand">Surround Mixer</div>
+      <nav class="ps-menu-actions">
+        <button type="button" id="btn-start" class="primary">Start</button>
+        <button type="button" id="btn-stop" disabled>Stop</button>
+        <span class="ps-sep"></span>
+        <label class="ps-inline">
+          Speakers
+          <select id="layout">
+            <option value="stereo">Stereo</option>
+            <option value="quad">Quad</option>
+            <option value="51" selected>5.1</option>
+            <option value="71">7.1</option>
+          </select>
+        </label>
+        <span class="ps-sep"></span>
+        <button type="button" id="btn-export-scene" title="Copy scene JSON">Export</button>
+        <button type="button" id="btn-import-scene" title="Paste scene JSON">Paste</button>
+        <button type="button" id="btn-load-default" title="Reload layouts/default.json">Load default</button>
+      </nav>
+      <p id="status" class="ps-status">Audio off</p>
+    </header>
+
+    <div class="ps-workspace">
+      <!-- Left tool strip -->
+      <aside class="ps-tools" aria-label="Tools">
+        <button type="button" class="tool active" id="tool-orbit" title="Orbit / drag" data-tool="orbit">V</button>
+        <button type="button" class="tool" id="tool-add-wall" title="Add wall" data-tool="add-wall">W+</button>
+        <button type="button" class="tool" id="btn-add-wall" title="Add wall at center">+</button>
+        <button type="button" class="tool danger" id="btn-remove-wall" title="Remove selected / last wall">-</button>
+        <span class="tool-spacer"></span>
+        <button type="button" class="tool" id="btn-copy-scene" title="Copy layout JSON">Cp</button>
+        <button type="button" class="tool" id="btn-paste-scene" title="Paste layout JSON">Ps</button>
+      </aside>
+
+      <!-- Canvas stage -->
+      <main class="ps-stage">
+        <div class="viewport-wrap">
+          <canvas id="view"></canvas>
+          <div id="viz-labels" class="viz-labels" aria-hidden="true"></div>
+          <div class="viewport-hint">
+            Tap ground to move listener · drag body to place · walls avoid corners · cyan path
+          </div>
+          <div class="ps-stage-meta">
+            <span id="caps">Device channels show after Start.</span>
+            <span id="perf-stats" class="perf-stats">perf —</span>
+            <span id="wall-count">Walls: 2</span>
+          </div>
+        </div>
+      </main>
+
+      <!-- Right dock -->
+      <aside class="ps-dock">
+        <div class="ps-tabs" role="tablist">
+          <button type="button" class="ps-tab active" data-panel="engine">Engine</button>
+          <button type="button" class="ps-tab" data-panel="room">Room</button>
+          <button type="button" class="ps-tab" data-panel="sources">Sources</button>
+          <button type="button" class="ps-tab" data-panel="scene">Scene</button>
+        </div>
+
+        <div class="ps-panels">
+          <section class="ps-panel active" id="panel-engine">
+            <h2>Spat</h2>
+            <label class="field field-check"><input id="air" type="checkbox" checked /><span>Air absorption</span></label>
+            <label class="field field-check"><input id="distance-atten" type="checkbox" checked /><span>Distance gain</span></label>
+            <label class="field field-check"><input id="near-field" type="checkbox" checked /><span>Near-field fill</span></label>
+            <label class="field field-check"><input id="occlusion" type="checkbox" checked /><span>Occlusion + wall reflections</span></label>
+            <label class="field field-check"><input id="front-back" type="checkbox" checked /><span>Front/back shadow</span></label>
+            <h2>UI bus</h2>
+            <label class="field">
+              <span>Level <output id="ui-vol-out">50%</output></span>
+              <input id="ui-vol" type="range" min="0" max="100" value="50" />
+            </label>
+            <div class="button-row">
+              <button id="btn-ui-click" type="button" disabled>Click</button>
+              <button id="btn-ui-ok" type="button" disabled>Confirm</button>
+              <button id="btn-ui-pop" type="button" disabled>Pop</button>
+            </div>
+            <p id="compat" class="note">FOA bed · VBAP points · dry UI → discrete ChannelMerger.</p>
+          </section>
+
+          <section class="ps-panel" id="panel-room">
+            <h2>Room bus</h2>
+            <label class="field field-check"><input id="room-on" type="checkbox" checked /><span>Enable room</span></label>
+            <label class="field">
+              <span>Size <output id="room-size-out">8 m</output></span>
+              <input id="room-size" type="range" min="40" max="200" value="80" />
+            </label>
+            <label class="field">
+              <span>Height <output id="room-height-out">3.0 m</output></span>
+              <input id="room-height" type="range" min="20" max="80" value="30" />
+            </label>
+            <label class="field">
+              <span>Absorption <output id="room-abs-out">0.35</output></span>
+              <input id="room-abs" type="range" min="5" max="90" value="35" />
+            </label>
+            <label class="field">
+              <span>Wet <output id="room-wet-out">25%</output></span>
+              <input id="room-wet" type="range" min="0" max="80" value="25" />
+            </label>
+            <p id="room-stats" class="note">RT60 after Start.</p>
+            <h2>Overlay</h2>
+            <label class="field field-check"><input id="viz-on" type="checkbox" checked /><span>Acoustics overlay</span></label>
+            <label class="field">
+              <span>Focus</span>
+              <select id="viz-focus">
+                <option value="waterfall" selected>Waterfall</option>
+                <option value="walker">Walker</option>
+                <option value="all">All sources</option>
+              </select>
+            </label>
+          </section>
+
+          <section class="ps-panel" id="panel-sources">
+            <h2>FOA bed</h2>
+            <label class="field field-check"><input id="ambi-on" type="checkbox" checked /><span>Enable</span></label>
+            <label class="field"><span>Level <output id="ambi-vol-out">35%</output></span><input id="ambi-vol" type="range" min="0" max="100" value="35" /></label>
+            <label class="field"><span>Drift <output id="ambi-drift-out">0.02 Hz</output></span><input id="ambi-drift" type="range" min="0" max="20" value="2" /></label>
+
+            <h2>Walker</h2>
+            <label class="field field-check"><input id="walk-on" type="checkbox" checked /><span>Enable</span></label>
+            <label class="field"><span>Level <output id="walk-vol-out">55%</output></span><input id="walk-vol" type="range" min="0" max="100" value="55" /></label>
+            <label class="field"><span>Speed <output id="walk-speed-out">1.6 m/s</output></span><input id="walk-speed" type="range" min="6" max="35" value="16" /></label>
+            <label class="field"><span>Stride <output id="walk-stride-out">0.75 m</output></span><input id="walk-stride" type="range" min="45" max="110" value="75" /></label>
+            <label class="field"><span>Radius <output id="walk-radius-out">3.5 m</output></span><input id="walk-radius" type="range" min="15" max="55" value="35" /></label>
+
+            <h2>Waterfall</h2>
+            <label class="field field-check"><input id="fall-on" type="checkbox" checked /><span>Enable</span></label>
+            <label class="field"><span>Level <output id="fall-vol-out">45%</output></span><input id="fall-vol" type="range" min="0" max="100" value="45" /></label>
+            <label class="field"><span>Spatializer</span>
+              <select id="fall-spatial"><option value="foa" selected>FOA</option><option value="vbap">VBAP</option></select>
+            </label>
+            <label class="field"><span>Sound</span>
+              <select id="fall-sound">
+                <option value="waterfall" selected>Waterfall</option>
+                <option value="stream">Stream</option>
+                <option value="rainforest">Rainforest</option>
+              </select>
+            </label>
+
+            <h2>Birds</h2>
+            <label class="field field-check"><input id="bird-on" type="checkbox" checked /><span>Enable</span></label>
+            <label class="field"><span>Count <output id="bird-count-out">3</output></span><input id="bird-count" type="range" min="1" max="8" value="3" /></label>
+            <label class="field"><span>Level <output id="bird-vol-out">50%</output></span><input id="bird-vol" type="range" min="0" max="100" value="50" /></label>
+            <label class="field"><span>Spatializer</span>
+              <select id="bird-spatial"><option value="vbap" selected>VBAP</option><option value="foa">FOA</option></select>
+            </label>
+            <label class="field"><span>Chirp</span>
+              <select id="bird-sound">
+                <option value="bird1" selected>Chirp A</option>
+                <option value="bird2">Chirp B</option>
+                <option value="bird3">Chirp C</option>
+                <option value="birdForest">Forest</option>
+              </select>
+            </label>
+            <label class="field"><span>Rate <output id="bird-rate-out">0.35 Hz</output></span><input id="bird-rate" type="range" min="5" max="80" value="35" /></label>
+            <label class="field"><span>Fly <output id="bird-fly-out">2.4 m/s</output></span><input id="bird-fly" type="range" min="8" max="50" value="24" /></label>
+          </section>
+
+          <section class="ps-panel" id="panel-scene">
+            <h2>Walls</h2>
+            <div class="button-row">
+              <button type="button" id="btn-add-wall-panel">Add wall</button>
+              <button type="button" id="btn-remove-wall-panel">Remove last</button>
+            </div>
+            <p class="note">Drag body to move · orange corners to resize · select a wall then press - in the tool strip.</p>
+            <ul id="wall-list" class="wall-list"></ul>
+
+            <h2>Layout JSON</h2>
+            <textarea id="scene-json" class="scene-json" rows="12" spellcheck="false" placeholder="Export / paste scene JSON here"></textarea>
+            <div class="button-row">
+              <button type="button" id="btn-apply-json">Apply JSON</button>
+              <button type="button" id="btn-refresh-json">Refresh</button>
+            </div>
+            <p class="note">Also edit <code>layouts/default.json</code> on disk, then Load default.</p>
+          </section>
+        </div>
+      </aside>
+    </div>
+  </div>
+  <script type="module" src="engine.js"></script>
+</body>
+</html>

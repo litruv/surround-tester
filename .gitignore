@@ -1,0 +1,10 @@
+.DS_Store
+*.log
+.cursor/
+.env
+.env.*
+node_modules/
+dist/
+.cache/
+*.swp
+*~
