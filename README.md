@@ -1,8 +1,14 @@
 # Surround Mixer
 
-Browser surround tester — discrete ChannelMerger spat (VBAP + FOA), walls/occlusion, click-to-walk listener.
+Browser surround tester — discrete ChannelMerger spat (VBAP + FOA), walls/floors, click-to-walk listener.
 
-Open locally with any static server (needs ES modules), or use the GitHub Pages build.
+## Layout
+
+| File | Role |
+|------|------|
+| `spat-engine.js` | **Engine** — VBAP/FOA, occlusion, room bus, `SurroundEngine` API (no Three.js / DOM) |
+| `app.js` | **Demo app** — Three.js scene, UI, walkers, birds, FOA beds |
+| `index.html` | Shell |
 
 ```bash
 python3 -m http.server 8765

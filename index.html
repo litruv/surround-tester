@@ -84,6 +84,8 @@
             <label class="field field-check"><input id="distance-atten" type="checkbox" checked /><span>Distance gain</span></label>
             <label class="field field-check"><input id="near-field" type="checkbox" checked /><span>Near-field fill</span></label>
             <label class="field field-check"><input id="occlusion" type="checkbox" checked /><span>Occlusion + wall reflections</span></label>
+            <label class="field field-check"><input id="floor-occ" type="checkbox" checked /><span>Floor occlusion (up/down)</span></label>
+            <label class="field"><span>Floor height <output id="floor-height-out">2.8 m</output></span><input id="floor-height" type="range" min="18" max="45" value="28" /></label>
             <label class="field field-check"><input id="front-back" type="checkbox" checked /><span>Front/back shadow</span></label>
             <h2>UI bus</h2>
             <label class="field">
@@ -124,7 +126,8 @@
               <span>Focus</span>
               <select id="viz-focus">
                 <option value="waterfall" selected>Waterfall</option>
-                <option value="walker">Walker</option>
+                <option value="walker">Walker (ground)</option>
+                <option value="walker-up">Walker (upstairs)</option>
                 <option value="all">All sources</option>
               </select>
             </label>
@@ -134,14 +137,18 @@
             <h2>FOA bed</h2>
             <label class="field field-check"><input id="ambi-on" type="checkbox" checked /><span>Enable</span></label>
             <label class="field"><span>Level <output id="ambi-vol-out">35%</output></span><input id="ambi-vol" type="range" min="0" max="100" value="35" /></label>
-            <label class="field"><span>Drift <output id="ambi-drift-out">0.02 Hz</output></span><input id="ambi-drift" type="range" min="0" max="20" value="2" /></label>
+            <label class="field"><span>Sway <output id="ambi-drift-out">0.00 Hz</output></span><input id="ambi-drift" type="range" min="0" max="20" value="0" /></label>
 
-            <h2>Walker</h2>
+            <h2>Walker · ground</h2>
             <label class="field field-check"><input id="walk-on" type="checkbox" checked /><span>Enable</span></label>
             <label class="field"><span>Level <output id="walk-vol-out">55%</output></span><input id="walk-vol" type="range" min="0" max="100" value="55" /></label>
             <label class="field"><span>Speed <output id="walk-speed-out">1.6 m/s</output></span><input id="walk-speed" type="range" min="6" max="35" value="16" /></label>
             <label class="field"><span>Stride <output id="walk-stride-out">0.75 m</output></span><input id="walk-stride" type="range" min="45" max="110" value="75" /></label>
             <label class="field"><span>Radius <output id="walk-radius-out">3.5 m</output></span><input id="walk-radius" type="range" min="15" max="55" value="35" /></label>
+
+            <h2>Walker · upstairs</h2>
+            <label class="field field-check"><input id="walk-up-on" type="checkbox" checked /><span>Enable</span></label>
+            <label class="field"><span>Level <output id="walk-up-vol-out">50%</output></span><input id="walk-up-vol" type="range" min="0" max="100" value="50" /></label>
 
             <h2>Waterfall</h2>
             <label class="field field-check"><input id="fall-on" type="checkbox" checked /><span>Enable</span></label>
@@ -197,6 +204,6 @@
       </aside>
     </div>
   </div>
-  <script type="module" src="engine.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
