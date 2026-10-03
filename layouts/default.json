@@ -3,8 +3,8 @@
   "name": "current",
   "speakerLayout": "stereo",
   "listener": {
-    "x": -4.269,
-    "z": -1.386
+    "x": 0.033,
+    "z": 0.05
   },
   "waterfall": {
     "x": -0.5,
